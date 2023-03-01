@@ -1,5 +1,5 @@
 /** @jsx h */
-import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
+import { ConnInfo, serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { h, html } from "https://deno.land/x/htm@0.0.10/mod.tsx";
 import { UnoCSS } from "https://deno.land/x/htm@0.0.10/plugins.ts";
 import { createReporter } from "https://deno.land/x/g_a@0.1.2/mod.ts";
@@ -15,64 +15,17 @@ html.use(UnoCSS())
 
 const ga = createReporter({ id: 'UA-188510615-2' });
 
-type MuseumPicture = {
-  copyright_info: string;
-  original: string;
-  teaser_3x2: string;
-  preview_3x2: string;
-  detail_3x2: string;
-  article_3x2: string;
-};
+import { GomusApi, Museum, Ticket } from "./gomus-api.ts";
+const api = new GomusApi("shop.museumssonntag.berlin", "en");
 
-type Museum = {
-  id: number;
-  title: string;
-  picture?: MuseumPicture;
-};
+const date = new Date(Date.UTC(2023, 3-1, 5));
+const dateStr = date.toISOString().split('T')[0];
 
-type Ticket = {
-  id: number;
-  ticket_type: "time_slot" | "annual";
-  museum_ids: Array<number>;
-  quota_ids: Array<number>;
-  title: string;
-  max_persons: number;
-  entry_duration: number;
-};
+const museumMap = await api.getMuseumsPage();
+const ticketMap = await api.getTicketsPage({ validAt: date });
+const shopPage = await api.getShop();
 
-const fetchOpts = {
-  "headers": {
-    "accept": "application/json, text/plain, */*",
-    "x-shop-url": "shop.museumssonntag.berlin",
-    "Referer": "https://shop.museumssonntag.berlin/",
-  },
-};
-
-const museumPage: {
-  meta: { page: number; per_page: number; total_count: number; };
-  museums: Array<Museum>;
-} = await fetch("https://kpb-museum.gomus.de/api/v4/museums?locale=en&per_page=1000", fetchOpts).then(x => x.json());
-const museumMap = new Map(museumPage.museums.map(x => [x.id, x]));
-
-const ticketPage: {
-  meta: { page: number; per_page: number; total_count: number; };
-  tickets: Array<Ticket>;
-} = await fetch("https://kpb-museum.gomus.de/api/v4/tickets?by_bookable=true&locale=en&per_page=1000&valid_at=2023-03-01", fetchOpts).then(x => x.json());
-const ticketMap = new Map(ticketPage.tickets.map(x => [x.id, x]));
-
-const shopPage: {
-  shop: {
-    name: string;
-    translations: Record<string,string>;
-    config: Record<string,unknown>;
-    settings: Record<string,unknown>;
-    content: {
-      "shop_tickets_global_free_field_text"?: string;
-    };
-  };
-} = await fetch("https://kpb-museum.gomus.de/api/v4/shop?locale=en", fetchOpts).then(x => x.json());
-
-const handler = async (req: Request, connInfo) => {
+const handler = async (req: Request, connInfo: ConnInfo) => {
   console.log(connInfo.remoteAddr.hostname, 'GET', new URL(req.url).pathname, req.headers.get('user-agent'));
 
   let err;
@@ -98,22 +51,10 @@ const ticketsHandler = async (req: Request) => {
     return new Response('Method not allowed', { status: 405 });
   }
 
-  const params = new URLSearchParams();
-  params.set('date', '2023-03-05');
-  // params.set('date', '2023-04-02');
-
-  for (const ticket of ticketPage.tickets) {
-    if (ticket.ticket_type !== 'time_slot') continue;
-    params.append(`ticket_ids[]`, `${ticket.id}`);
-  }
-
-  const caps: {
-    data: Record<string, {
-      tickets:          Array<number>;
-      capacities:       Record<string, number>;
-      total_capacities: Record<string, number>;
-    }>;
-  } = await fetch(`https://kpb-museum.gomus.de/api/v4/tickets/capacities?${params}`, fetchOpts).then(x => x.json());
+  const caps = await api.getTicketCapacities(date, Array
+    .from(ticketMap.values())
+    .filter(x => x.ticket_type === 'time_slot')
+    .map(x => x.id));
 
   const rows = new Array<{
     museum: Museum;
@@ -126,7 +67,7 @@ const ticketsHandler = async (req: Request) => {
   }>();
 
   // console.log(caps);
-  for (const quota of Object.values(caps.data)) {
+  for (const quota of Object.values(caps)) {
     const tickets = quota.tickets.flatMap(x => ticketMap.has(x) ? [ticketMap.get(x)!] : []);
     const museumIds = Array.from(new Set(tickets.flatMap(x => x.museum_ids)));
     const [museum] = museumIds.map(x => museumMap.get(x) ?? { id: x, title: `` });
@@ -138,7 +79,7 @@ const ticketsHandler = async (req: Request) => {
     const bookParams = new URLSearchParams();
     if (museumIds[0]) bookParams.append('museum_id', `${museumIds[0]}`);
     bookParams.append('group', 'timeSlot');
-    if (params.get('date')) bookParams.append('date', params.get('date')!);
+    bookParams.append('date', dateStr);
     const firstTimeSlot = Object.entries(quota.capacities).find(x => x[1] > 0)?.[0];
     if (firstTimeSlot) bookParams.append('time', firstTimeSlot);
     rows.push({
@@ -180,7 +121,7 @@ const ticketsHandler = async (req: Request) => {
     host_name,
   }]));
 
-  const ticketsFreeText = shopPage.shop.content?.shop_tickets_global_free_field_text?.replaceAll(/<[^>]+>/g, '');
+  const ticketsFreeText = shopPage.content?.shop_tickets_global_free_field_text?.replaceAll(/<[^>]+>/g, '');
 
   return html({
     title: "Ticket Availability - Berlin Museum Sunday",
@@ -245,7 +186,7 @@ const ticketsHandler = async (req: Request) => {
                         max={row.total_tickets}
                         high={Math.max(row.total_tickets - 10, 2)}
                         low={Math.max(row.total_tickets - 100, 1)}
-                        optimum="0"
+                        optimum={0}
                       />
                   ) : []}
                 </td>
@@ -265,7 +206,7 @@ const ticketsHandler = async (req: Request) => {
             href="https://gomus.de/"
           >
             <img alt="Deno" src="https://dash.deno.com/assets/logo.svg" class="w-5" style="display: none;" />
-            go~mus API
+            go~mus public API
           </a>
         </footer>
       </div>
