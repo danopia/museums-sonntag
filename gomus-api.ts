@@ -69,10 +69,15 @@ export class GomusApi {
     return ticketMap;
   }
 
-  async getTicketCalendar(opts: {startDate?: Date, endDate?: Date}) {
+  async getTicketCalendar(opts: {
+    byBookable?: boolean;
+    byTicketType?: string;
+    startDate?: Date;
+    endDate?: Date;
+  }) {
     const params = new URLSearchParams();
-    params.set('by_bookable', 'true');
-    params.set('by_ticket_type', 'time_slot');
+    params.set('by_bookable', `${opts.byBookable ?? true}`);
+    if (opts.byTicketType) params.set('by_ticket_type', opts.byTicketType);
     if (opts.startDate) params.set('start_at', opts.startDate.toISOString().split('T')[0]);
     if (opts.endDate) params.set('end_at', opts.endDate.toISOString().split('T')[0]);
 
@@ -119,3 +124,5 @@ export class GomusApi {
     return caps.data;
   }
 }
+
+export const api = new GomusApi("shop.museumssonntag.berlin", "en");
