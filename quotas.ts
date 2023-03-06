@@ -12,6 +12,7 @@ export type Quota = {
 
 export async function describeQuotas(museumMap: Map<number, Museum>, api: GomusApi, date: Date) {
   const ticketMap = await api.getTicketsPage({ validAt: date });
+  if (ticketMap.size == 0) return [];
 
   const caps = await api.getTicketCapacities(date, Array
     .from(ticketMap.values())

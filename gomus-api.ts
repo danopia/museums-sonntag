@@ -76,7 +76,7 @@ export class GomusApi {
     endDate?: Date;
   }) {
     const params = new URLSearchParams();
-    params.set('by_bookable', `${opts.byBookable ?? true}`);
+    if (opts.byBookable != null) params.set('by_bookable', `${opts.byBookable}`);
     if (opts.byTicketType) params.set('by_ticket_type', opts.byTicketType);
     if (opts.startDate) params.set('start_at', opts.startDate.toISOString().split('T')[0]);
     if (opts.endDate) params.set('end_at', opts.endDate.toISOString().split('T')[0]);

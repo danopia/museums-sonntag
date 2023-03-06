@@ -69,6 +69,7 @@ const indexHandler = async (req: Request) => {
   const openDate = calendar.find(x => x[1])?.[0];
   if (openDate) {
     return new Response(`The next date is ${openDate}. Check ${new URL(`/${openDate}`, req.url)}`, {
+      status: 303,
       headers: {
         location: `/${openDate}`,
       },
