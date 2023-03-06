@@ -8,7 +8,7 @@ html.use(UnoCSS());
 
 const ga = createReporter({ id: 'UA-188510615-2' });
 
-import { apiEN, apiDE, GomusApi } from "./gomus-api.ts";
+import { apiEN, apiDE } from "./gomus-api.ts";
 import { describeQuotas } from "./quotas.ts";
 import { reportQuotaMetrics } from "./metrics.ts";
 import { htmlResponse } from "./template.tsx";
@@ -28,33 +28,44 @@ async function handler(req: Request, connInfo: ConnInfo) {
   return res!;
 }
 
-const datePattern = new URLPattern({ pathname:'/:date([0-9]{4}-[0-9]{2}-[0-9]{2})' });
+const homePattern = new URLPattern({ pathname:'/:locale(en|de){/}?' });
+const datePattern = new URLPattern({ pathname:'/:locale(en|de)/:date([0-9]{4}-[0-9]{2}-[0-9]{2})' });
 
 async function router(req: Request, connInfo: ConnInfo) {
   const url = new URL(req.url);
   const { hostname } = connInfo.remoteAddr as Deno.NetAddr;
-  const api = req.headers.get('accept-language')?.split(',')[0].startsWith('de-') ? apiDE : apiEN;
+  const locale = req.headers.get('accept-language')?.split(',')[0].startsWith('de-') ? 'de' : 'en';
 
   console.log(hostname, 'GET', url.pathname,
     req.headers.get('user-agent'),
-    req.headers.get('accept-language')?.split(',')[0]);
+    req.headers.get('accept-language')?.split(','));
 
   if (url.pathname === '/') {
-    return await indexHandler(req, api);
+    return await indexHandler(req, locale);
+  }
+  {
+    const match = homePattern.exec(url);
+    if (match) {
+      return await indexHandler(req,
+        match.pathname.groups['locale'] as 'en'|'de');
+    }
   }
   {
     const match = datePattern.exec(url);
     if (match) {
-      return await ticketsHandler(req, api, match.pathname.groups['date']);
+      return await ticketsHandler(req,
+        match.pathname.groups['locale'] as 'en'|'de',
+        match.pathname.groups['date']);
     }
   }
   return new Response('Not found', { status: 404 });
 }
 
-const indexHandler = async (req: Request, api: GomusApi) => {
+const indexHandler = async (req: Request, locale: 'en' | 'de') => {
   if (req.method !== "GET") {
     return new Response('Method not allowed', { status: 405 });
   }
+  const api = locale == 'de' ? apiDE : apiEN;
 
   const startDate = new Date();
   startDate.setDate(startDate.getDate() - 1);
@@ -72,46 +83,59 @@ const indexHandler = async (req: Request, api: GomusApi) => {
     return new Response(`The next date is ${openDate}. Check ${new URL(`/${openDate}`, req.url)}`, {
       status: 303,
       headers: {
-        location: `/${openDate}`,
+        location: `/${locale}/${openDate}`,
       },
     });
   }
 
   const shop = await api.getShop();
-  return htmlResponse(shop,
+  return htmlResponse(locale, shop,
     <div class="max-w-xl my-8 text-center status-box">
-      <h3 class="mt-4 text-2xl text-gray-800">No current availabilities</h3>
+      <h3 class="mt-4 text-2xl text-gray-800">
+        {shop.translations['common.empty']}
+      </h3>
       <p class="mt-2 text-md text-gray-800">
-        Tickets become available around a week before the first Sunday of each month.
-        Once they are fully booked, new availabilities only come from cancellations.
+        {locale == 'en' ? `
+          Tickets become available around a week before the first Sunday of each month.
+          Once they are fully booked, new availabilities only come from cancellations.
+        ` : `
+          Die Eintrittskarten werden etwa eine Woche vor dem ersten Sonntag eines jeden Monats verfügbar.
+          Sobald sie ausgebucht sind, werden neue Plätze nur noch durch Stornierungen frei.
+        `}
       </p>
     </div>
   );
 }
 
-const ticketsHandler = async (req: Request, api: GomusApi, dateStr: string) => {
+const ticketsHandler = async (req: Request, locale: 'en' | 'de', dateStr: string) => {
   if (req.method !== "GET") {
     return new Response('Method not allowed', { status: 405 });
   }
+  const api = locale == 'de' ? apiDE : apiEN;
   const date = new Date(dateStr);
 
   const museumMap = await api.getMuseumsPage();
   const rows = await describeQuotas(museumMap, api, date)
     .then(list => list.filter(x => x.total_tickets > 0));
+  const shop = await api.getShop();
 
   rows.sort((a,b) => b.available_tickets - a.available_tickets);
 
   if (rows.length == 0) {
-    const shop = await api.getShop();
-    return htmlResponse(shop,
+    return htmlResponse(locale, shop,
       <div class="max-w-xl my-8 text-center">
-        <h3 class="mt-4 text-2xl text-gray-800">No availabilities found</h3>
+        <h3 class="mt-4 text-2xl text-gray-800">
+          {shop.translations['common.empty']}
+        </h3>
         <p class="mt-2 text-md text-gray-800">
-          For <code>{dateStr}</code> there just aren't any tickets currently available.
+          {shop.translations['tickets.empty']}
+          {" "}
           Sorry.
         </p>
-        <p class="mt-2 text-md text-gray-800">
-          <a href="/">Back to homepage</a>
+        <p class="mt-2">
+          <a href={`/${locale}/`} class="text-sm text-black no-underline font-semibold">
+            {shop.translations['header.aria.home']}
+          </a>
         </p>
       </div>
     );
@@ -119,16 +143,23 @@ const ticketsHandler = async (req: Request, api: GomusApi, dateStr: string) => {
 
   reportQuotaMetrics(rows);
 
-  const shop = await api.getShop();
-  return htmlResponse(shop,
+  return htmlResponse(locale, shop,
     <table class="md:mx-4 my-4">
       <thead>
         <tr>
           <th class="hidden lg:table-cell"></th>
-          <th>Offer</th>
-          <th class="p-2 hidden md:table-cell">Timeslots</th>
-          <th class="p-2 hidden md:table-cell">Total</th>
-          <th class="p-2">Available</th>
+          <th>
+            {shop.translations['cart.content.table.desc']}
+          </th>
+          <th class="p-2 hidden md:table-cell">
+            {shop.translations['ticket.timeSlot.title']}
+          </th>
+          <th class="p-2 hidden md:table-cell">
+            {shop.translations['cart.content.table.total']}
+          </th>
+          <th class="p-2">
+            {shop.translations['product.dates.table.free']}
+          </th>
           <th></th>
         </tr>
       </thead>
@@ -143,17 +174,17 @@ const ticketsHandler = async (req: Request, api: GomusApi, dateStr: string) => {
                     ? 'bg-orange-200 hover:bg-orange-300'
                     : 'bg-red-50 hover:bg-red-100'))}`}>
             <td class="hidden lg:table-cell">{row.museum.picture ? (
-              <img class="pic" src={row.museum.picture.detail_3x2} width="200" title={row.museum.picture.copyright_info} />
+              <img class="pic" src={row.museum.picture.detail_3x2} width="200" title={row.museum.picture.copyright_info?.replaceAll(/<[^>]+>/g, '')} />
             ) : (
-              <div class="pic bg-gray-300" style="width: 200px; height: 133px;"></div>
+              <div class="pic bg-gray-300" style="width: 200px; height: 133px;" title={shop.translations['404.description']}></div>
             )}</td>
             <td class="pl-4 p-2">
-              {row.museum?.title ?? (<em>(No museum title)</em>)}
+              {row.museum?.title || (<em>({shop.translations['museum.error.title']})</em>)}
               <ul>
                 {row.tickets.map(x => (
                   <li class="ml-4 list-circle">
-                    {x.title?.includes('Time-Slot') ? `${x.entry_duration}min ` : ''}
-                    {x.title?.replace(` — ${row.museum?.title || 'zzz'}`, '') ?? (<em>(no ticket title)</em>)}
+                    {x.title?.includes('Time-Slot') ? `${x.entry_duration}' ` : ''}
+                    {x.title?.replace(` — ${row.museum?.title || 'zzz'}`, '') || (<em>({shop.translations['product.error.title']})</em>)}
                   </li>
                 ))}
               </ul>
@@ -173,7 +204,9 @@ const ticketsHandler = async (req: Request, api: GomusApi, dateStr: string) => {
               ) : []}
             </td>
             <td class="pr-4">{row.available_tickets > 0 ? (
-              <a class="display-block text-center p-1 text-white bg-green-500 hover:bg-green-700" href={row.book_url} target="_blank">Book</a>
+              <a class="display-block text-center p-1 text-white bg-green-500 hover:bg-green-700" href={row.book_url} target="_blank">
+                {shop.translations['product.dates.table.button']}
+              </a>
             ) : []}</td>
           </tr>
         ))}
