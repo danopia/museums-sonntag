@@ -8,12 +8,10 @@ html.use(UnoCSS());
 
 const ga = createReporter({ id: 'UA-188510615-2' });
 
-import { api } from "./gomus-api.ts";
+import { apiEN, apiDE, GomusApi } from "./gomus-api.ts";
 import { describeQuotas } from "./quotas.ts";
 import { reportQuotaMetrics } from "./metrics.ts";
 import { htmlResponse } from "./template.tsx";
-
-const museumMap = await api.getMuseumsPage();
 
 async function handler(req: Request, connInfo: ConnInfo) {
   let err;
@@ -34,23 +32,26 @@ const datePattern = new URLPattern({ pathname:'/:date([0-9]{4}-[0-9]{2}-[0-9]{2}
 
 async function router(req: Request, connInfo: ConnInfo) {
   const url = new URL(req.url);
-
   const { hostname } = connInfo.remoteAddr as Deno.NetAddr;
-  console.log(hostname, 'GET', url.pathname, req.headers.get('user-agent'));
+  const api = req.headers.get('accept-language')?.split(',')[0].startsWith('de-') ? apiDE : apiEN;
+
+  console.log(hostname, 'GET', url.pathname,
+    req.headers.get('user-agent'),
+    req.headers.get('accept-language')?.split(',')[0]);
 
   if (url.pathname === '/') {
-    return await indexHandler(req);
+    return await indexHandler(req, api);
   }
   {
     const match = datePattern.exec(url);
     if (match) {
-      return await ticketsHandler(req, match.pathname.groups['date']);
+      return await ticketsHandler(req, api, match.pathname.groups['date']);
     }
   }
   return new Response('Not found', { status: 404 });
 }
 
-const indexHandler = async (req: Request) => {
+const indexHandler = async (req: Request, api: GomusApi) => {
   if (req.method !== "GET") {
     return new Response('Method not allowed', { status: 405 });
   }
@@ -76,7 +77,8 @@ const indexHandler = async (req: Request) => {
     });
   }
 
-  return htmlResponse(
+  const shop = await api.getShop();
+  return htmlResponse(shop,
     <div class="max-w-xl my-8 text-center status-box">
       <h3 class="mt-4 text-2xl text-gray-800">No current availabilities</h3>
       <p class="mt-2 text-md text-gray-800">
@@ -87,19 +89,21 @@ const indexHandler = async (req: Request) => {
   );
 }
 
-const ticketsHandler = async (req: Request, dateStr: string) => {
+const ticketsHandler = async (req: Request, api: GomusApi, dateStr: string) => {
   if (req.method !== "GET") {
     return new Response('Method not allowed', { status: 405 });
   }
-
   const date = new Date(dateStr);
 
+  const museumMap = await api.getMuseumsPage();
   const rows = await describeQuotas(museumMap, api, date)
     .then(list => list.filter(x => x.total_tickets > 0));
+
   rows.sort((a,b) => b.available_tickets - a.available_tickets);
 
   if (rows.length == 0) {
-    return htmlResponse(
+    const shop = await api.getShop();
+    return htmlResponse(shop,
       <div class="max-w-xl my-8 text-center">
         <h3 class="mt-4 text-2xl text-gray-800">No availabilities found</h3>
         <p class="mt-2 text-md text-gray-800">
@@ -115,7 +119,8 @@ const ticketsHandler = async (req: Request, dateStr: string) => {
 
   reportQuotaMetrics(rows);
 
-  return htmlResponse(
+  const shop = await api.getShop();
+  return htmlResponse(shop,
     <table class="md:mx-4 my-4">
       <thead>
         <tr>

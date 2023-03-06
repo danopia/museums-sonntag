@@ -23,6 +23,16 @@ export type Ticket = {
   entry_duration: number;
 };
 
+export type Shop = {
+  name: string;
+  translations: Record<string,string>;
+  config: Record<string,unknown>;
+  settings: Record<string,unknown>;
+  content: {
+    "shop_tickets_global_free_field_text"?: string;
+  };
+}
+
 export class GomusApi {
   constructor(
     readonly shopUrl: string,
@@ -92,15 +102,7 @@ export class GomusApi {
     params.set('locale', this.locale);
 
     const shopPage: {
-      shop: {
-        name: string;
-        translations: Record<string,string>;
-        config: Record<string,unknown>;
-        settings: Record<string,unknown>;
-        content: {
-          "shop_tickets_global_free_field_text"?: string;
-        };
-      };
+      shop: Shop;
     } = await this.fetchJson(`/v4/shop`, params);
     return shopPage.shop;
   }
@@ -125,4 +127,5 @@ export class GomusApi {
   }
 }
 
-export const api = new GomusApi("shop.museumssonntag.berlin", "en");
+export const apiEN = new GomusApi("shop.museumssonntag.berlin", "en");
+export const apiDE = new GomusApi("shop.museumssonntag.berlin", "de");

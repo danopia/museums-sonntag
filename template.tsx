@@ -1,15 +1,13 @@
 /** @jsx h */
 import html, { Fragment, h, VNode } from "https://deno.land/x/htm@0.1.4/mod.ts";
-import { api } from "./gomus-api.ts";
+import { Shop } from "./gomus-api.ts";
 
-const shopPage = await api.getShop();
-
-export function htmlResponse(body: VNode) {
+export function htmlResponse(shop: Shop, body: VNode) {
   return html({
     title: "Ticket Availability - Berlin Museum Sunday",
     body: (
       <div class="flex flex-col items-center justify-center w-full">
-        <Header />
+        <Header shop={shop} />
         {body}
         <Footer />
       </div>
@@ -17,8 +15,10 @@ export function htmlResponse(body: VNode) {
   });
 }
 
-function Header() {
-  const ticketsFreeText = shopPage.content?.shop_tickets_global_free_field_text?.replaceAll(/<[^>]+>/g, '');
+function Header(props: {
+  shop: Shop;
+}) {
+  const ticketsFreeText = props.shop.content?.shop_tickets_global_free_field_text?.replaceAll(/<[^>]+>/g, '');
   return (<Fragment>
     <h1 class="mt-8 text-4xl font-bold">Berlin Museum Sunday</h1>
     <p class="mt-2 text-lg text-center text-gray-600">All ticket slots and current availability</p>
