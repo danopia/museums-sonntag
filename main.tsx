@@ -1,4 +1,6 @@
 /** @jsx h */
+import "https://deno.land/x/observability@v0.4.0/preconfigured/from-environment.ts";
+import { httpTracer } from "https://deno.land/x/observability@v0.4.0/instrumentation/http-server.ts";
 import { ConnInfo, serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import html, { h } from "https://deno.land/x/htm@0.1.4/mod.ts";
 import UnoCSS from "https://deno.land/x/htm@0.1.4/plugins/unocss.ts";
@@ -15,14 +17,14 @@ import { htmlResponse } from "./template.tsx";
 
 async function handler(req: Request, connInfo: ConnInfo) {
   let err;
-  let res: Response;
+  let res!: Response;
   const start = performance.now();
   try {
     res = await router(req, connInfo);
   } catch (e) {
     err = e;
   } finally {
-    ga(req, connInfo, res!, start, err);
+    ga(req, connInfo, res ?? new Response('', {status: 500}), start, err);
   }
   if (err) throw err;
   return res!;
@@ -216,4 +218,4 @@ const ticketsHandler = async (req: Request, locale: 'en' | 'de', dateStr: string
   );
 };
 
-serve(handler);
+serve(httpTracer(handler));
