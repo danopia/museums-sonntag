@@ -50,14 +50,14 @@ function Footer(props: {
     ? 'Daten geladen von'
     : 'Data loaded from';
   const publicAPI = props.locale == 'de'
-    ? 'öffentliche API'
+    ? 'Public-API'
     : 'public API';
   return (
     <footer class="mt-8 bottom-8 pb-16 w-full h-6 flex items-center justify-center gap-2 text-gray-800">
       {loadedFrom}
       <a
         class="flex items-center gap-2 text-sm text-black no-underline font-semibold"
-        href="https://gomus.de/"
+        href="https://giantmonkey.github.io/gomus-api-doc/public_api.html"
       >
         <img alt="Deno" src="https://dash.deno.com/assets/logo.svg" class="w-5" style="display: none;" />
         go~mus {publicAPI}
