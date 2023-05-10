@@ -2,7 +2,10 @@
 import html, { Fragment, h, VNode } from "https://deno.land/x/htm@0.1.4/mod.ts";
 import { Shop } from "./gomus-api.ts";
 
-export function htmlResponse(locale: 'de' | 'en', shop: Shop, body: VNode) {
+export function htmlResponse(reqUrl: string, locale: 'de' | 'en', shop: Shop, body: VNode) {
+  const {origin} = new URL(reqUrl);
+  const path = reqUrl.slice(origin.length + 3);
+
   return html({
     lang: locale,
     title: locale == 'de'
@@ -12,7 +15,7 @@ export function htmlResponse(locale: 'de' | 'en', shop: Shop, body: VNode) {
       <div class="flex flex-col items-center justify-center w-full">
         <Header locale={locale} shop={shop} />
         {body}
-        <Footer locale={locale} />
+        <Footer locale={locale} pagePath={path} />
       </div>
     ),
   });
@@ -45,23 +48,41 @@ function Header(props: {
 
 function Footer(props: {
   locale: 'en' | 'de';
+  pagePath: string;
 }) {
+
   const loadedFrom = props.locale == 'de'
     ? 'Daten geladen von'
     : 'Data loaded from';
   const publicAPI = props.locale == 'de'
     ? 'Public-API'
     : 'public API';
+
+  const enLang = props.locale == 'de'
+    ? 'Englisch'
+    : 'English';
+  const deLang = props.locale == 'de'
+    ? 'Deutsch'
+    : 'German';
+
   return (
-    <footer class="mt-8 bottom-8 pb-16 w-full h-6 flex items-center justify-center gap-2 text-gray-800">
-      {loadedFrom}
-      <a
-        class="flex items-center gap-2 text-sm text-black no-underline font-semibold"
-        href="https://giantmonkey.github.io/gomus-api-doc/public_api.html"
-      >
-        <img alt="Deno" src="https://dash.deno.com/assets/logo.svg" class="w-5" style="display: none;" />
-        go~mus {publicAPI}
-      </a>
+    <footer class="mt-8 bottom-8 pb-16 w-full flex flex-col items-center justify-center gap-2 text-gray-800 text-sm text-center">
+
+      <div>
+        {loadedFrom} <a
+          class="text-black font-semibold"
+          href="https://giantmonkey.github.io/gomus-api-doc/public_api.html"
+        >
+          go~mus {publicAPI}
+        </a>
+      </div>
+
+      <div>
+        <a href={`/en${props.pagePath}`} class={props.locale == 'en' ? 'font-semibold' : 'underline'}>{enLang}</a>
+        {" | "}
+        <a href={`/de${props.pagePath}`} class={props.locale == 'de' ? 'font-semibold' : 'underline'}>{deLang}</a>
+      </div>
+
     </footer>
   );
 }

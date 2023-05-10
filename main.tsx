@@ -1,3 +1,4 @@
+#!/usr/bin/env -S deno run --allow-net --allow-env --allow-sys --allow-read --watch
 /** @jsx h */
 import "https://deno.land/x/observability@v0.4.0/preconfigured/from-environment.ts";
 import { httpTracer } from "https://deno.land/x/observability@v0.4.0/instrumentation/http-server.ts";
@@ -40,10 +41,15 @@ async function router(req: Request, connInfo: ConnInfo) {
 
   console.log(hostname, 'GET', url.pathname,
     req.headers.get('user-agent'),
-    req.headers.get('accept-language')?.split(','));
+    req.headers.get('accept-language'));
 
   if (url.pathname === '/') {
-    return await indexHandler(req, locale);
+    return new Response(`Redirecting to /${locale}/`, {
+      status: 302,
+      headers: {
+        location: `/${locale}/`,
+      },
+    });
   }
   {
     const match = homePattern.exec(url);
@@ -91,7 +97,7 @@ const indexHandler = async (req: Request, locale: 'en' | 'de') => {
   }
 
   const shop = await api.getShop();
-  return htmlResponse(locale, shop,
+  return htmlResponse(req.url, locale, shop,
     <div class="max-w-xl my-8 text-center status-box">
       <h3 class="mt-4 text-2xl text-gray-800">
         {shop.translations['common.empty']}
@@ -124,7 +130,7 @@ const ticketsHandler = async (req: Request, locale: 'en' | 'de', dateStr: string
   rows.sort((a,b) => b.available_tickets - a.available_tickets);
 
   if (rows.length == 0) {
-    return htmlResponse(locale, shop,
+    return htmlResponse(req.url, locale, shop,
       <div class="max-w-xl my-8 text-center">
         <h3 class="mt-4 text-2xl text-gray-800">
           {shop.translations['common.empty']}
@@ -145,7 +151,7 @@ const ticketsHandler = async (req: Request, locale: 'en' | 'de', dateStr: string
 
   reportQuotaMetrics(rows);
 
-  return htmlResponse(locale, shop,
+  return htmlResponse(req.url, locale, shop,
     <table class="md:mx-4 my-4">
       <thead>
         <tr>
